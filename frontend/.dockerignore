@@ -1,0 +1,16 @@
+# Node modules (very important)
+node_modules/
+
+# Logs
+npm-debug.log
+*.log
+
+# Environment files
+.env
+
+# Git
+.git
+.gitignore
+
+# OS files
+.DS_Store
