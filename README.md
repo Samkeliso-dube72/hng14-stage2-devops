@@ -1,65 +1,92 @@
-# hng14-stage2-devops
 # HNG Stage 2 DevOps Project
 
 ## Overview
-This project is a containerized microservices application made up of:
+This project is a containerized microservices application consisting of:
 
-- Frontend (Node.js)
-- API (FastAPI)
-- Worker (Python)
-- Redis (message broker)
+- **Frontend** (Node.js)
+- **API** (FastAPI)
+- **Worker** (Python)
+- **Redis** (Message Broker)
 
-The goal was to fix issues in the provided application, containerize all services, and implement a CI/CD pipeline.
+### Objectives
+- Fix bugs in the provided application
+- Containerize all services using best practices
+- Implement a full CI/CD pipeline
+- Ensure the system is production-ready and resilient
 
 ---
 
 ## Prerequisites
 
+Ensure you have the following installed:
+
 - Docker
-- Docker Compose
+- Docker Compose (v2+)
 - Git
 
 ---
 
-## Setup Instructions
+## Getting Started
 
-### 1. Clone the Repository
+### 1. Clone Your Fork
 
-```
-git clone https://github.com/chukwukelu2023/hng14-stage2-devops.git 
-
+```bash
+git clone https://github.com/chukwukelu2023/hng14-stage2-devops
 cd hng14-stage2-devops
 ```
 
 ---
 
-### 2. Create Environment File
+### 2. Set Up Environment Variables
 
 Create a `.env` file in the root directory:
 
-API_URL=http://localhost:8000  
-REDIS_HOST=redis  
-REDIS_PORT=6379  
+```bash
+touch .env
+```
+
+Add the following:
+
+```env
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+
+# Frontend Configuration
+API_URL=http://api:8000
+
+# Redis Configuration
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# Worker Configuration
+WORKER_CONCURRENCY=1
+```
 
 ---
 
 ### 3. Start the Application
 
+```bash
 docker compose up -d --build
+```
 
 ---
 
 ### 4. Verify Containers
 
-docker ps  
+```bash
+docker ps
+```
 
-Expected services:
+Expected running services:
+
 - frontend (port 3000)
 - api (port 8000)
 - worker
-- redis
+- redis (internal only)
 
-All containers should be **healthy**.
+All containers should show **healthy** status.
 
 ---
 
@@ -67,69 +94,146 @@ All containers should be **healthy**.
 
 ### Check API Health
 
-curl http://localhost:8000/health  
+```bash
+curl http://localhost:8000/health
+```
 
-Expected:
+Expected response:
+
+```json
 {"status":"ok"}
+```
 
 ---
 
 ### Create a Job
 
-curl -X POST http://localhost:8000/jobs  
+```bash
+curl -X POST http://localhost:8000/jobs
+```
 
 ---
 
 ### Check Job Status
 
-curl http://localhost:8000/jobs/<job_id>  
+```bash
+curl http://localhost:8000/jobs/<job_id>
+```
 
 Expected flow:
+
+```
 queued → completed
+```
 
 ---
 
-### Open Frontend
+### Access Frontend
 
+Open in browser:
+
+```
 http://localhost:3000
+```
 
 ---
 
 ## Docker Setup
 
-- Each service has its own Dockerfile
-- Services communicate via Docker network
-- Redis is not exposed externally
-- Health checks are configured for all services
+- Each service has its own **Dockerfile**
+- Uses **multi-stage builds**
+- Runs as **non-root user**
+- Includes **HEALTHCHECK**
+- Services communicate via a **shared Docker network**
+- Redis is **not exposed externally**
+- Uses **environment variables only** (no hardcoding)
+- CPU and memory limits configured in `docker-compose.yml`
 
 ---
 
 ## CI/CD Pipeline
 
-Pipeline stages:
+Pipeline stages (in order):
 
+```
 lint → test → build → security → integration → deploy
+```
 
-- Lint: flake8, eslint, hadolint
-- Test: pytest with coverage
-- Build: Docker images
-- Security: Trivy scan
-- Integration: full system test
-- Deploy: rolling update simulation
+### Lint
+- flake8 (Python)
+- eslint (JavaScript)
+- hadolint (Dockerfiles)
+
+### Test
+- pytest with Redis mocked
+- Coverage report generated and uploaded
+
+### Build
+- Docker images built and tagged (`latest` + git SHA)
+- Pushed to local registry
+
+### Security
+- Trivy scan
+- Fails on CRITICAL vulnerabilities
+- SARIF report uploaded
+
+### Integration
+- Full stack runs inside CI
+- Job submitted and verified end-to-end
+
+### Deploy
+- Runs only on `main`
+- Rolling update strategy
+- Health check validation (60s timeout)
+- Rollback on failure
 
 ---
 
-## Fixes
+## Environment Example File
 
-All identified issues and fixes are documented in:
+Create `.env.example`:
 
+```env
+API_HOST=0.0.0.0
+API_PORT=8000
+API_URL=http://api:8000
+REDIS_HOST=redis
+REDIS_PORT=6379
+WORKER_CONCURRENCY=1
+```
+
+---
+
+## Fixes Documentation
+
+All identified bugs and fixes are documented in:
+
+```
 FIXES.md
+```
+
+Each entry includes:
+- File name
+- Line number
+- Issue description
+- Fix applied
 
 ---
 
 ## Final Status
 
 - All services running successfully
-- API working correctly
+- API responding correctly
 - Jobs processed end-to-end
+- Redis communication working
+- Containers healthy
 - CI/CD pipeline passing all stages
+
+---
+
+## Notes
+
+- `.env` is NOT committed (as required)
+- `.env.example` is provided for reference
+- No secrets are hardcoded anywhere
+- Project is fully reproducible on a clean machine
