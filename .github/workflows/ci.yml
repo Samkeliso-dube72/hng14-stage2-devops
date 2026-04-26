@@ -5,6 +5,11 @@ on:
     branches: ["main"]
   pull_request:
 
+# ✅ REQUIRED for Trivy SARIF upload
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
 
 # ---------------- LINT ----------------
@@ -14,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Python lint
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -21,6 +27,7 @@ jobs:
       - run: pip install flake8
       - run: flake8 api worker
 
+      # JS lint
       - uses: actions/setup-node@v4
         with:
           node-version: "18"
@@ -34,6 +41,7 @@ jobs:
           cd frontend
           npx eslint . || true
 
+      # Docker lint
       - uses: hadolint/hadolint-action@v3.1.0
 
 
@@ -91,7 +99,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build API image (needed again in this job)
+      # Rebuild image in this job (jobs are isolated)
+      - name: Build API image
         run: docker build -t api:latest ./api
 
       - name: Scan API image
@@ -102,7 +111,7 @@ jobs:
           output: "trivy-api.sarif"
           severity: "CRITICAL"
 
-      - name: Upload scan
+      - name: Upload scan results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-api.sarif
