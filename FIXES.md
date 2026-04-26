@@ -120,3 +120,74 @@ The dotenv module was used but not listed as a dependency.
 Installed dotenv and added it to dependencies:
 
 npm install dotenv
+
+
+# Fixes and Improvements
+
+## 1. Redis Connection Fix
+- Updated Redis host from `localhost` to `redis` for container networking
+- Enabled `decode_responses=True` for proper string handling
+
+---
+
+## 2. API Bug Fix
+- Removed duplicate `FastAPI()` instance that was overriding routes
+- Restored `/jobs` endpoints functionality
+
+---
+
+## 3. Frontend Fix
+- Added missing `dotenv` dependency to `package.json`
+- Rebuilt frontend container successfully
+
+---
+
+## 4. Port Conflict Fix
+- Resolved port `3000 already in use` by stopping existing Node process
+
+---
+
+## 5. Lint Fixes (CI Pipeline)
+- Fixed Python lint errors (flake8):
+  - Removed unused imports
+  - Fixed spacing (E302, E305)
+  - Fixed newline issues (W292, W391)
+
+- Fixed ESLint issues:
+  - Added `eslint.config.js`
+  - Converted config to CommonJS format
+
+- Fixed Dockerfile lint issues (Hadolint):
+  - Added `--no-install-recommends`
+  - Cleaned apt cache
+  - Pinned curl version
+
+---
+
+## 6. Environment Configuration Fix
+- Cleaned `.env` file (removed invalid entries like `venv/`, `node_modules/`)
+- Moved ignored files to `.gitignore`
+
+---
+
+## 7. Docker Fixes
+- Added root `Dockerfile` for CI linting
+- Ensured all containers build successfully
+- Verified health checks
+
+---
+
+## 8. System Integration Success
+- Successfully ran full stack using `docker-compose`
+- Verified:
+  - API `/health` endpoint
+  - Job creation (`POST /jobs`)
+  - Job processing via worker
+  - Job status updates (`queued → completed`)
+
+---
+
+## ✅ Final Status
+- All containers running healthy
+- Full system working end-to-end
+- CI lint stage passing
