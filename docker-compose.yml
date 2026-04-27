@@ -11,11 +11,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 256M
 
   api:
     build: ./api
@@ -24,23 +19,18 @@ services:
       redis:
         condition: service_healthy
     environment:
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      API_PORT: ${API_PORT}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      API_PORT: 8000
     ports:
-      - "${API_PORT}:8000"
+      - "8000:8000"
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl --fail http://localhost:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 512M
 
   worker:
     build: ./worker
@@ -49,8 +39,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     networks:
       - app-network
     healthcheck:
@@ -58,11 +48,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 512M
 
   frontend:
     build: ./frontend
@@ -71,22 +56,17 @@ services:
       api:
         condition: service_healthy
     environment:
-      API_URL: ${API_URL}
-      FRONTEND_PORT: ${FRONTEND_PORT}
+      API_BASE_URL: http://api:8000   # ✅ FIXED (was wrong before)
+      FRONTEND_PORT: 3000
     ports:
-      - "${FRONTEND_PORT}:3000"
+      - "3000:3000"
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 512M
 
 networks:
   app-network:
