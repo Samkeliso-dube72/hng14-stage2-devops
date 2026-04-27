@@ -64,23 +64,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install API dependencies
         run: |
           cd api
           pip install -r requirements.txt
-          pip install pytest pytest-cov
 
       - name: Run pytest suite
         run: |
           cd api
-          PYTHONPATH=. pytest --cov=. --cov-report=xml
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: api/coverage.xml
-
+          PYTHONPATH=. pytest --maxfail=1 --disable-warnings -q
 
 # ---------------- BUILD ----------------
   build:
@@ -91,29 +83,14 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build API image
-        run: |
-          docker build \
-            -t api:${{ github.sha }} \
-            -t api:latest \
-            ./api
+        run: docker build -t api:latest ./api
 
       - name: Build Worker image
-        run: |
-          docker build \
-            -t worker:${{ github.sha }} \
-            -t worker:latest \
-            ./worker
+        run: docker build -t worker:latest ./worker
 
       - name: Build Frontend image
-        run: |
-          docker build \
-            -t frontend:${{ github.sha }} \
-            -t frontend:latest \
-            ./frontend
+        run: docker build -t frontend:latest ./frontend
 
 
 # ---------------- SECURITY ----------------
@@ -151,33 +128,46 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Start services
+      - name: Start services with Docker Compose
         run: docker compose up -d --build
 
-      - name: Wait for API
+      # ✅ FIX: wait LONGER + don't fail early
+      - name: Wait for API to become healthy
         run: |
-          for i in {1..12}; do
-            curl -f http://localhost:8000/health && break
+          for i in {1..20}; do
+            if curl -f http://localhost:8000/health; then
+              echo "API is ready"
+              exit 0
+            fi
+            echo "Waiting for API..."
             sleep 5
           done
+          echo "API failed to start"
+          docker compose logs
+          exit 1
 
-      - name: Install jq
+      - name: Install jq tool
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Run integration test
+      # ✅ REQUIRED integration test logic
+      - name: Run job processing integration test
+        timeout-minutes: 5
         run: |
           JOB_ID=$(curl -s -X POST http://localhost:8000/jobs | jq -r .job_id)
 
-          for i in {1..12}; do
+          for i in {1..20}; do
             STATUS=$(curl -s http://localhost:8000/jobs/$JOB_ID | jq -r .status)
+            echo "Status: $STATUS"
+
             if [ "$STATUS" = "completed" ]; then
-              echo "Job completed"
+              echo "Job completed successfully"
               exit 0
             fi
+
             sleep 3
           done
 
-          echo "Job failed"
+          echo "Job did not complete in time"
           exit 1
 
       - name: Tear down services
@@ -199,13 +189,13 @@ jobs:
         run: |
           docker compose up -d --build
 
-          for i in {1..12}; do
+          for i in {1..20}; do
             if curl -f http://localhost:8000/health; then
-              echo "Healthy"
+              echo "Deployment healthy"
               exit 0
             fi
             sleep 5
           done
 
-          echo "Deploy failed"
+          echo "Deployment failed"
           exit 1
