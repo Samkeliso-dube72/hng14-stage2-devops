@@ -1,18 +1,23 @@
-# -------- Stage 1: Build --------
+# =========================
+# STAGE 1 — BUILDER
+# =========================
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy only dependency files first
 COPY package*.json ./
 
-# Install production dependencies
-RUN npm install --only=production
+# Install ONLY production dependencies
+RUN npm ci --omit=dev
 
-# Copy source code
+# Copy rest of source code
 COPY . .
 
-# -------- Stage 2: Runtime --------
+
+# =========================
+# STAGE 2 — RUNTIME
+# =========================
 FROM node:18-alpine
 
 WORKDIR /app
@@ -21,21 +26,21 @@ WORKDIR /app
 RUN apk add --no-cache wget
 
 # Create non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup -S app && adduser -S app -G app
 
-# Copy app
+# Copy ONLY what is needed from builder
 COPY --from=builder /app /app
 
 # Set permissions
-RUN chown -R appuser:appgroup /app
+RUN chown -R app:app /app
 
-# Switch user
-USER appuser
+# Switch to non-root
+USER app
 
 # Expose port
 EXPOSE 3000
 
-# Health check (FIXED)
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 CMD wget --quiet --tries=1 --spider http://localhost:3000 || exit 1
 

@@ -3,11 +3,13 @@ version: "3.9"
 services:
   redis:
     image: redis:7
+    restart: unless-stopped
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
+      timeout: 5s
       retries: 5
     deploy:
       resources:
@@ -17,12 +19,14 @@ services:
 
   api:
     build: ./api
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
     environment:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
+      API_PORT: ${API_PORT}
     ports:
       - "${API_PORT}:8000"
     networks:
@@ -30,15 +34,17 @@ services:
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
       interval: 10s
+      timeout: 5s
       retries: 5
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "0.50"
           memory: 512M
 
   worker:
     build: ./worker
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy
@@ -48,22 +54,25 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "worker.py"]
+      test: ["CMD-SHELL", "pgrep -f worker || exit 1"]
       interval: 10s
+      timeout: 5s
       retries: 5
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "0.50"
           memory: 512M
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
     environment:
       API_URL: ${API_URL}
+      FRONTEND_PORT: ${FRONTEND_PORT}
     ports:
       - "${FRONTEND_PORT}:3000"
     networks:
@@ -71,11 +80,12 @@ services:
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
       interval: 10s
+      timeout: 5s
       retries: 5
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "0.50"
           memory: 512M
 
 networks:

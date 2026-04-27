@@ -5,10 +5,15 @@ on:
     branches: ["main"]
   pull_request:
 
-# ✅ REQUIRED for Trivy SARIF upload
 permissions:
   contents: read
   security-events: write
+
+env:
+  REGISTRY: localhost:5000
+  API_IMAGE: api
+  WORKER_IMAGE: worker
+  FRONTEND_IMAGE: frontend
 
 jobs:
 
@@ -17,32 +22,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code
+        uses: actions/checkout@v4
 
-      # Python lint
-      - uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - run: pip install flake8
-      - run: flake8 api worker
+      - name: Install Python linting tool (flake8)
+        run: pip install flake8
 
-      # JS lint
-      - uses: actions/setup-node@v4
+      - name: Run Python lint checks
+        run: flake8 api worker
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
         with:
           node-version: "18"
 
-      - run: |
+      - name: Install frontend dependencies and eslint
+        run: |
           cd frontend
           npm install
           npm install eslint
 
-      - run: |
+      - name: Run frontend lint checks
+        run: |
           cd frontend
           npx eslint . || true
 
-      # Docker lint
-      - uses: hadolint/hadolint-action@v3.1.0
+      - name: Run Dockerfile linting with Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
 
 
 # ---------------- TEST ----------------
@@ -51,25 +62,26 @@ jobs:
     needs: lint
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code for tests
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python for tests
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install deps
+      - name: Install API dependencies and test tools
         run: |
           cd api
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Run tests
+      - name: Execute API test suite
         run: |
           cd api
           PYTHONPATH=. pytest --cov=. --cov-report=xml
 
-      - name: Upload coverage
+      - name: Upload test coverage report artifact
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -81,64 +93,102 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
 
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code for build
+        uses: actions/checkout@v4
 
-      - name: Build images
-        run: |
-          docker build -t api:latest ./api
-          docker build -t worker:latest ./worker
-          docker build -t frontend:latest ./frontend
+      - name: Set up Docker Buildx for caching
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image with cache
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push worker image with cache
+        uses: docker/build-push-action@v5
+        with:
+          context: ./worker
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image with cache
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
 
-# ---------------- SECURITY SCAN ----------------
+# ---------------- SECURITY ----------------
   security:
     runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code for security scan
+        uses: actions/checkout@v4
 
-      # Rebuild image in this job (jobs are isolated)
-      - name: Build API image
+      - name: Build API image for vulnerability scanning
         run: docker build -t api:latest ./api
 
-      - name: Scan API image
+      - name: Run Trivy vulnerability scan on API image
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "api:latest"
           format: "sarif"
-          output: "trivy-api.sarif"
+          output: "trivy.sarif"
           severity: "CRITICAL"
 
-      - name: Upload scan results
+      - name: Upload Trivy SARIF report
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-api.sarif
+          sarif_file: trivy.sarif
 
 
-# ---------------- INTEGRATION TEST ----------------
+# ---------------- INTEGRATION ----------------
   integration:
     runs-on: ubuntu-latest
     needs: security
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code for integration tests
+        uses: actions/checkout@v4
 
-      - name: Start app
+      - name: Start application services with Docker Compose
         run: docker compose up -d --build
 
-      - name: Wait for API
+      - name: Wait for API health endpoint to be ready
         run: |
           for i in {1..12}; do
             curl -f http://localhost:8000/health && break
             sleep 5
           done
 
-      - name: Install jq
+      - name: Install jq for JSON parsing
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Test job flow
+      - name: Run end-to-end job processing test
         run: |
           JOB_ID=$(curl -s -X POST http://localhost:8000/jobs | jq -r .job_id)
 
@@ -154,7 +204,7 @@ jobs:
           echo "Job failed"
           exit 1
 
-      - name: Tear down
+      - name: Tear down Docker Compose services
         if: always()
         run: docker compose down
 
@@ -166,9 +216,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source code for deployment
+        uses: actions/checkout@v4
 
-      - name: Deploy (rolling update simulation)
+      - name: Deploy application (rolling simulation)
         run: |
           docker compose up -d --build
 
