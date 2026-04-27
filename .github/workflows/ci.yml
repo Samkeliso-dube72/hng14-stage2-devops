@@ -9,12 +9,6 @@ permissions:
   contents: read
   security-events: write
 
-env:
-  REGISTRY: localhost:5000
-  API_IMAGE: api
-  WORKER_IMAGE: worker
-  FRONTEND_IMAGE: frontend
-
 jobs:
 
 # ---------------- LINT ----------------
@@ -30,18 +24,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Python linting tool (flake8)
+      - name: Install flake8
         run: pip install flake8
 
       - name: Run Python lint checks
         run: flake8 api worker
 
-      - name: Set up Node.js 18
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "18"
 
-      - name: Install frontend dependencies and eslint
+      - name: Install frontend dependencies
         run: |
           cd frontend
           npm install
@@ -52,7 +46,7 @@ jobs:
           cd frontend
           npx eslint . || true
 
-      - name: Run Dockerfile linting with Hadolint
+      - name: Run Hadolint
         uses: hadolint/hadolint-action@v3.1.0
 
 
@@ -62,26 +56,26 @@ jobs:
     needs: lint
 
     steps:
-      - name: Checkout source code for tests
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set up Python for tests
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install API dependencies and test tools
+      - name: Install dependencies
         run: |
           cd api
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Execute API test suite
+      - name: Run pytest suite
         run: |
           cd api
           PYTHONPATH=. pytest --cov=. --cov-report=xml
 
-      - name: Upload test coverage report artifact
+      - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -93,51 +87,33 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
 
-    services:
-      registry:
-        image: registry:2
-        ports:
-          - 5000:5000
-
     steps:
-      - name: Checkout source code for build
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx for caching
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push API image with cache
-        uses: docker/build-push-action@v5
-        with:
-          context: ./api
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.API_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build API image
+        run: |
+          docker build \
+            -t api:${{ github.sha }} \
+            -t api:latest \
+            ./api
 
-      - name: Build and push worker image with cache
-        uses: docker/build-push-action@v5
-        with:
-          context: ./worker
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.WORKER_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build Worker image
+        run: |
+          docker build \
+            -t worker:${{ github.sha }} \
+            -t worker:latest \
+            ./worker
 
-      - name: Build and push frontend image with cache
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build Frontend image
+        run: |
+          docker build \
+            -t frontend:${{ github.sha }} \
+            -t frontend:latest \
+            ./frontend
 
 
 # ---------------- SECURITY ----------------
@@ -146,13 +122,13 @@ jobs:
     needs: build
 
     steps:
-      - name: Checkout source code for security scan
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Build API image for vulnerability scanning
+      - name: Build API image for scan
         run: docker build -t api:latest ./api
 
-      - name: Run Trivy vulnerability scan on API image
+      - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "api:latest"
@@ -160,7 +136,7 @@ jobs:
           output: "trivy.sarif"
           severity: "CRITICAL"
 
-      - name: Upload Trivy SARIF report
+      - name: Upload SARIF results
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy.sarif
@@ -172,23 +148,23 @@ jobs:
     needs: security
 
     steps:
-      - name: Checkout source code for integration tests
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Start application services with Docker Compose
+      - name: Start services
         run: docker compose up -d --build
 
-      - name: Wait for API health endpoint to be ready
+      - name: Wait for API
         run: |
           for i in {1..12}; do
             curl -f http://localhost:8000/health && break
             sleep 5
           done
 
-      - name: Install jq for JSON parsing
+      - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Run end-to-end job processing test
+      - name: Run integration test
         run: |
           JOB_ID=$(curl -s -X POST http://localhost:8000/jobs | jq -r .job_id)
 
@@ -204,7 +180,7 @@ jobs:
           echo "Job failed"
           exit 1
 
-      - name: Tear down Docker Compose services
+      - name: Tear down services
         if: always()
         run: docker compose down
 
@@ -216,10 +192,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout source code for deployment
+      - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Deploy application (rolling simulation)
+      - name: Deploy application
         run: |
           docker compose up -d --build
 
